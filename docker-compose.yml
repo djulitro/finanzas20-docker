@@ -1,0 +1,116 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: ${PROJECT_NAME}_mysql
+    restart: unless-stopped
+    ports:
+      - "${PORT_MYSQL}:3306"
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/my.cnf
+    networks:
+      - app_network
+
+  # Laravel Backend (PHP-FPM)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend/Dockerfile
+    container_name: ${PROJECT_NAME}_backend
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+      - ./docker/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - app_network
+    depends_on:
+      - mysql
+
+  # Nginx Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: ${PROJECT_NAME}_nginx
+    restart: unless-stopped
+    ports:
+      - "${PORT_BACKEND}:80"
+      - "${PORT_BACKEND_SSL}:443"
+    volumes:
+      - ./backend:/var/www
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/sites/:/etc/nginx/sites-available
+      - ./docker/nginx/ssl/:/etc/ssl/certs
+    networks:
+      - app_network
+    depends_on:
+      - backend
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/frontend/Dockerfile
+    container_name: ${PROJECT_NAME}_frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT_FRONTEND}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=${API_URL}
+      - CHOKIDAR_USEPOLLING=true
+    networks:
+      - app_network
+    depends_on:
+      - backend
+
+  # Redis (para cache y sesiones)
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME}_redis
+    restart: unless-stopped
+    ports:
+      - "${PORT_REDIS}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app_network
+
+  # PhpMyAdmin (opcional para administrar la DB)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: ${PROJECT_NAME}_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "${PORT_PHPMYADMIN}:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    networks:
+      - app_network
+    depends_on:
+      - mysql
+
+# Volumes
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# Networks
+networks:
+  app_network:
+    name: app_network
+    driver: bridge
