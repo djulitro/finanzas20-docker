@@ -38,11 +38,11 @@ COPY . /var/www
 # Copy existing application directory permissions
 COPY --chown=www:www . /var/www
 
+# Install dependencies as root before switching users
+RUN composer install --optimize-autoloader --no-interaction
+
 # Change current user to www
 USER www
-
-# Install dependencies
-RUN composer install --no-dev --optimize-autoloader
 
 # Expose port 9000 and start php-fpm server
 EXPOSE 9000
